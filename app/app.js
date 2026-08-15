@@ -30,6 +30,7 @@ const momentDialog = $('#momentDialog');
 let pendingPhotoRetryTimer = 0;
 let photoViewerMomentId = '';
 let photoViewerIndex = 0;
+let detailMomentId = '';
 let statusEditorGroup = 'daily';
 let selectedStatusPreset = 'A1';
 let locationRefreshInFlight = false;
@@ -402,6 +403,37 @@ function renderMemoryFeed() {
     return `<article class="memory-feed" id="memory-${escapeHtml(moment.id)}"><div class="memory-head"><div class="memory-avatar">${escapeHtml(firstCharacter(author, '♡'))}</div><div><h3 class="memory-author">${escapeHtml(author)}</h3><p class="memory-date">${formatDate(moment.date, { year:'numeric', month:'long', day:'numeric', weekday:'long' })}</p></div></div><h3>${escapeHtml(moment.title)}</h3>${moment.note ? `<p>${escapeHtml(moment.note)}</p>` : ''}${gallery}${commentsHtml}${actions}</article>`;
   }).join('');
 }
+function momentDetailHtml(moment) {
+  const author = displayAuthor(moment);
+  const photos = momentPhotos(moment);
+  const editable = canEditMoment(moment);
+  const gallery = photos.length ? `<div class="moment-gallery count-${Math.min(photos.length, 9)}">${photos.slice(0, 9).map((photo, index) => `<div class="memory-photo"><button type="button" class="memory-photo-open" data-open-photo="${escapeHtml(moment.id)}" data-photo-index="${index}" aria-label="放大查看第 ${index + 1} 张照片"><img src="${photo}" alt="${escapeHtml(moment.title)} 的第 ${index + 1} 张照片" /></button>${editable ? `<button type="button" class="memory-photo-delete" data-delete-photo="${escapeHtml(moment.id)}" data-photo-index="${index}" aria-label="删除第 ${index + 1} 张照片">×</button>` : ''}</div>`).join('')}</div>` : '';
+  const comments = Array.isArray(moment.comments) ? moment.comments : [];
+  const commentsHtml = `<div class="memory-comments">${comments.length ? comments.map((comment) => `<div class="memory-comment"><strong>${escapeHtml(roleDisplayName(comment.authorRole, comment.author))}</strong><span>${escapeHtml(comment.body || '')}</span><time>${formatCommentTime(comment.createdAt)}</time>${canDeleteComment(comment) ? `<button type="button" class="memory-comment-delete" data-delete-comment="${escapeHtml(moment.id)}" data-comment-id="${escapeHtml(comment.id)}" aria-label="删除自己的这条评论">删除</button>` : ''}</div>`).join('') : '<p class="no-comments">还没有评论，给 TA 留句话吧。</p>'}<form class="comment-form" data-comment-form="${escapeHtml(moment.id)}"><input name="comment" maxlength="180" autocomplete="off" placeholder="评论这条回忆…" aria-label="评论内容" required /><button type="submit">发送</button></form></div>`;
+  const actions = editable ? `<div class="memory-actions"><button type="button" class="delete-moment-button" data-delete-moment="${escapeHtml(moment.id)}">删除这条记录</button></div>` : '';
+  return `<article class="memory-feed moment-detail-card"><div class="memory-head"><div class="memory-avatar">${escapeHtml(firstCharacter(author, '♡'))}</div><div><h3 class="memory-author">${escapeHtml(author)}</h3><p class="memory-date">${formatDate(moment.date, { year:'numeric', month:'long', day:'numeric', weekday:'long' })}</p></div></div><h3>${escapeHtml(moment.title)}</h3>${moment.note ? `<p>${escapeHtml(moment.note)}</p>` : ''}${gallery}${commentsHtml}${actions}</article>`;
+}
+function renderMomentDetail(momentId = detailMomentId) {
+  const moment = state.moments.find((item) => item.id === momentId);
+  if (!moment) {
+    detailMomentId = '';
+    $('#momentDetailContent').innerHTML = '<div class="collection-empty">这条帖子已经不存在。</div>';
+    return;
+  }
+  detailMomentId = moment.id;
+  $('#momentDetailHeading').textContent = moment.title || '帖子详情';
+  $('#momentDetailHint').textContent = `${formatDate(moment.date, { year:'numeric', month:'long', day:'numeric', weekday:'long' })} · ${typeLabel(moment.type)}`;
+  $('#momentDetailContent').innerHTML = momentDetailHtml(moment);
+}
+function openMomentDetail(momentId) {
+  const moment = state.moments.find((item) => item.id === momentId);
+  if (!moment) return;
+  detailMomentId = moment.id;
+  markMomentsRead((item) => item.id === moment.id);
+  renderCalendar();
+  renderMomentDetail(moment.id);
+  if (!$('#momentDetailDialog').open) $('#momentDetailDialog').showModal();
+}
 function formatCommentTime(value) {
   const date = new Date(value || 0);
   if (Number.isNaN(date.getTime())) return '';
@@ -695,7 +727,7 @@ function renderDay() {
   dayContent.innerHTML = `<div class="moments">${moments.map((moment) => {
     const photos = momentPhotos(moment); const photo = photos[0] ? `<button type="button" class="moment-photo-button" data-open-photo="${moment.id}" data-photo-index="0" aria-label="放大查看照片"><img class="moment-photo" src="${photos[0]}" alt="${escapeHtml(moment.title)} 的照片" /></button>` : `<div class="moment-photo-placeholder">${moment.type === 'anniversary' ? '♥' : moment.type === 'date' ? '☼' : '✦'}</div>`;
     const gallery = photos.length > 1 ? `<div class="moment-gallery">${photos.slice(1,4).map((image, index) => `<button type="button" class="moment-gallery-button" data-open-photo="${moment.id}" data-photo-index="${index + 1}" aria-label="放大查看第 ${index + 2} 张照片"><img src="${image}" alt="${escapeHtml(moment.title)} 的第 ${index + 2} 张照片" /></button>`).join('')}</div>` : '';
-    return `<article class="moment-card" style="--card-color:${typeColor(moment.type)}">${photo}<div class="moment-copy"><div class="moment-meta"><span class="author-badge">${escapeHtml(displayAuthor(moment))}</span><span class="moment-type">${typeLabel(moment.type)}</span></div><h3>${escapeHtml(moment.title)}</h3>${moment.note ? `<p>${escapeHtml(moment.note)}</p>` : ''}${gallery}</div></article>`;
+    return `<article class="moment-card" data-open-moment="${escapeHtml(moment.id)}" tabindex="0" role="button" aria-label="查看帖子：${escapeHtml(moment.title)}" style="--card-color:${typeColor(moment.type)}">${photo}<div class="moment-copy"><div class="moment-meta"><span class="author-badge">${escapeHtml(displayAuthor(moment))}</span><span class="moment-type">${typeLabel(moment.type)}</span></div><h3>${escapeHtml(moment.title)}</h3>${moment.note ? `<p>${escapeHtml(moment.note)}</p>` : ''}${gallery}<span class="moment-open-hint">查看完整帖子与评论 ›</span></div></article>`;
   }).join('')}</div>`;
 }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '"':'&quot;' })[character]); }
@@ -809,7 +841,17 @@ $('#momentPhoto').addEventListener('change', async (event) => {
 $('#photoPreviewGrid').addEventListener('click', (event) => { const button = event.target.closest('button[data-photo-index]'); if (!button) return; state.photos.splice(Number(button.dataset.photoIndex), 1); renderPhotoPreviews(); });
 dayContent.addEventListener('click', (event) => {
   const button = event.target.closest('[data-open-photo]');
-  if (button) openPhotoViewer(button.dataset.openPhoto, button.dataset.photoIndex);
+  if (button) { openPhotoViewer(button.dataset.openPhoto, button.dataset.photoIndex); return; }
+  const momentTarget = event.target.closest('[data-open-moment]');
+  if (momentTarget) openMomentDetail(momentTarget.dataset.openMoment);
+});
+dayContent.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  if (event.target.closest('[data-open-photo]')) return;
+  const momentTarget = event.target.closest('[data-open-moment]');
+  if (!momentTarget) return;
+  event.preventDefault();
+  openMomentDetail(momentTarget.dataset.openMoment);
 });
 $('#photoViewerClose').addEventListener('click', () => $('#photoViewerDialog').close());
 $('#photoViewerPrevious').addEventListener('click', () => movePhotoViewer(-1));
@@ -1197,6 +1239,48 @@ $('#memoriesList').addEventListener('submit', (event) => {
   saveMoments(); renderMemoryFeed(); void pushCloud();
 });
 $('#memoriesDialogClose').addEventListener('click', () => $('#memoriesDialog').close());
+$('#momentDetailClose').addEventListener('click', () => $('#momentDetailDialog').close());
+$('#momentDetailContent').addEventListener('click', (event) => {
+  const openButton = event.target.closest('[data-open-photo]');
+  const photoButton = event.target.closest('[data-delete-photo]');
+  const momentButton = event.target.closest('[data-delete-moment]');
+  const commentButton = event.target.closest('[data-delete-comment]');
+  if (openButton) { openPhotoViewer(openButton.dataset.openPhoto, openButton.dataset.photoIndex); return; }
+  if (commentButton) {
+    const moment = state.moments.find((item) => item.id === commentButton.dataset.deleteComment);
+    const comment = moment && (Array.isArray(moment.comments) ? moment.comments : []).find((item) => item.id === commentButton.dataset.commentId);
+    if (!moment || !comment || !canDeleteComment(comment) || !confirm('删除自己的这条评论吗？')) return;
+    moment.deletedCommentIds = [...new Set([...(Array.isArray(moment.deletedCommentIds) ? moment.deletedCommentIds : []), comment.id])].slice(-160);
+    moment.comments = moment.comments.filter((item) => item.id !== comment.id);
+    saveMoments(); renderMemoryFeed(); renderMomentDetail(moment.id); void pushCloud(); return;
+  }
+  if (photoButton) {
+    const moment = state.moments.find((item) => item.id === photoButton.dataset.deletePhoto);
+    if (!moment || !canEditMoment(moment) || !confirm('删除这张照片吗？')) return;
+    const photos = momentPhotos(moment); photos.splice(Number(photoButton.dataset.photoIndex), 1); moment.photos = photos; moment.storagePhotos = photos; moment.photo = photos[0] || '';
+    saveMoments(); renderAll(); renderMemoryFeed(); renderMomentDetail(moment.id); void pushCloud(); return;
+  }
+  if (momentButton) {
+    const moment = state.moments.find((item) => item.id === momentButton.dataset.deleteMoment);
+    if (!moment || !canEditMoment(moment) || !confirm('删除这条记录及其中的照片吗？此操作无法撤销。')) return;
+    state.settings.cloud.deletedMomentIds = [...new Set([...(state.settings.cloud.deletedMomentIds || []), moment.id])].slice(-1200);
+    state.moments = state.moments.filter((item) => item.id !== moment.id);
+    saveSettings(); saveMoments(); renderAll(); renderMemoryFeed(); $('#momentDetailDialog').close(); detailMomentId = ''; void pushCloud();
+  }
+});
+$('#momentDetailContent').addEventListener('submit', (event) => {
+  const form = event.target.closest('[data-comment-form]');
+  if (!form) return;
+  event.preventDefault();
+  const input = form.elements.comment;
+  const body = String(input.value || '').trim();
+  const moment = state.moments.find((item) => item.id === form.dataset.commentForm);
+  if (!moment || !body) return;
+  const role = currentMemberRole();
+  moment.comments = Array.isArray(moment.comments) ? moment.comments : [];
+  moment.comments.push({ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, body, author: profile().myName, authorRole: role, createdAt: new Date().toISOString() });
+  saveMoments(); renderMemoryFeed(); renderMomentDetail(moment.id); void pushCloud();
+});
 $('#openStatusEditor').addEventListener('click', openStatusEditor);
 $('#statusDialogClose').addEventListener('click', () => $('#statusDialog').close());
 $('#statusCategoryTabs').addEventListener('click', (event) => {

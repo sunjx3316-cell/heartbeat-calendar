@@ -7,6 +7,10 @@
   const config = window.HEARTBEAT_CONFIG || {};
   const ENV_ID = String(config.cloudbaseEnvId || '').trim();
   const FUNCTION_NAME = String(config.cloudFunctionName || 'couple-calendar').trim();
+  const PHOTO_URL_BATCH_SIZE = 40;
+  const PHOTO_URL_CONCURRENCY = 2;
+  const PHOTO_URL_CACHE_MS = 20 * 60 * 1000;
+  const photoUrlCache = new Map();
   let app;
   let ready;
 
@@ -118,8 +122,37 @@
     const ids = [...new Set((moments || []).flatMap((moment) => Array.isArray(moment.photos) ? moment.photos : []).filter((photo) => /^cloud:\/\//.test(photo)))];
     if (!ids.length) return moments || [];
     if (!session) return moments || [];
-    const result = await call('getPhotoUrls', { session, fileIDs: ids });
-    const urls = Object.fromEntries((result.fileList || []).filter((item) => item.tempFileURL).map((item) => [item.fileID, item.tempFileURL]));
+    const currentTime = Date.now();
+    const urls = {};
+    const missing = [];
+    ids.forEach((fileID) => {
+      const cached = photoUrlCache.get(fileID);
+      if (cached && cached.expiresAt > currentTime) urls[fileID] = cached.url;
+      else {
+        photoUrlCache.delete(fileID);
+        missing.push(fileID);
+      }
+    });
+
+    const batches = [];
+    for (let index = 0; index < missing.length; index += PHOTO_URL_BATCH_SIZE) {
+      batches.push(missing.slice(index, index + PHOTO_URL_BATCH_SIZE));
+    }
+    let nextBatch = 0;
+    async function resolveWorker() {
+      while (nextBatch < batches.length) {
+        const batch = batches[nextBatch++];
+        const result = await call('getPhotoUrls', { session, fileIDs: batch });
+        (result.fileList || []).filter((item) => item.tempFileURL).forEach((item) => {
+          urls[item.fileID] = item.tempFileURL;
+          photoUrlCache.set(item.fileID, { url: item.tempFileURL, expiresAt: Date.now() + PHOTO_URL_CACHE_MS });
+        });
+      }
+    }
+    await Promise.all(Array.from(
+      { length: Math.min(PHOTO_URL_CONCURRENCY, batches.length) },
+      () => resolveWorker()
+    ));
     return (moments || []).map((moment) => {
       const sources = moment.storagePhotos || moment.photos || [];
       const displayPhotos = sources.map((photo) => urls[photo] || photo);
@@ -128,7 +161,7 @@
   }
 
   window.HeartbeatCloud = {
-    version: 'cloudbase-v39-memory-identity-comments',
+    version: 'cloudbase-community-v2-photo-batches-post-detail',
     environmentId: ENV_ID,
     describeError,
     initialise,
@@ -137,7 +170,10 @@
     newInvite(session) { return call('newInvite', { session }); },
     pull(session) { return call('pull', { session }); },
     push(session, snapshot) { return call('push', { session, snapshot }); },
-    deletePhotos(session, fileIDs) { return call('deletePhotos', { session, fileIDs }); },
+    deletePhotos(session, fileIDs) {
+      (fileIDs || []).forEach((fileID) => photoUrlCache.delete(fileID));
+      return call('deletePhotos', { session, fileIDs });
+    },
     uploadPhoto,
     resolvePhotos
   };

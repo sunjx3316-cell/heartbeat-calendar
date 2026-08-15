@@ -1,7 +1,7 @@
-const CACHE = 'heartbeat-calendar-community-v1';
+const CACHE = 'heartbeat-calendar-community-v2';
 const ASSETS = [
-  './', './index.html', './config.js?v=community-1', './styles.css?v=45', './extras.css?v=45',
-  './app.js?v=community-1', './cloud-client.js?v=community-1', './location-utils.js?v=community-1', './calendar-date.js?v=community-1', './vendor/cloudbase.full.js?v=community-1', './manifest.json',
+  './', './index.html', './config.js?v=community-2', './styles.css?v=community-2', './extras.css?v=community-2',
+  './app.js?v=community-2', './cloud-client.js?v=community-2', './location-utils.js?v=community-2', './calendar-date.js?v=community-2', './vendor/cloudbase.full.js?v=community-2', './manifest.json',
   './icons/icon-192.svg', './icons/icon-512.svg'
 ];
 
