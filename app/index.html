@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fa6f8c" />
+    <meta name="description" content="两个人的专属恋爱日历" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="心动日历" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+    <link rel="stylesheet" href="styles.css?v=45" />
+    <link rel="stylesheet" href="extras.css?v=45" />
+    <title>心动日历</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero-card" aria-label="情侣信息">
+        <div class="hero-topline">
+          <button class="icon-button soft" id="profileButton" aria-label="情侣档案">♡</button>
+          <span class="sync-chip" id="syncStatus"><i></i> 本机私密保存</span>
+          <button class="icon-button soft" id="shareButton" aria-label="邀请另一半">⌁</button>
+        </div>
+        <div class="couple-heading">
+          <div class="avatars" aria-hidden="true">
+            <span class="avatar avatar-a" id="avatarA">我</span><span class="avatar avatar-b" id="avatarB">TA</span>
+          </div>
+          <div>
+            <p class="eyebrow" id="coupleSubtitle">OUR LITTLE UNIVERSE</p>
+            <h1 id="coupleTitle">我们的心动日历</h1>
+          </div>
+        </div>
+        <div class="love-counter">
+          <div><span id="togetherDays">0</span><small>相爱天数</small></div>
+          <div class="counter-divider"></div>
+          <p id="nextAnniversary">距离下一个纪念日<br /><strong>-- 天</strong></p>
+        </div>
+        <div class="floating-petal petal-one">✦</div>
+        <div class="floating-petal petal-two">♥</div>
+      </section>
+
+      <section class="live-status-section" aria-label="情侣实时状态">
+        <article class="partner-live-status" id="partnerStatusCard">
+          <div class="partner-status-emoji" id="partnerStatusEmoji" aria-hidden="true">💭</div>
+          <div class="partner-status-copy">
+            <p class="eyebrow" id="partnerStatusLabel">TA RIGHT NOW</p>
+            <h2 id="partnerStatusText">TA 还没有设置状态</h2>
+            <p id="partnerStatusMeta">等 TA 冒个泡</p>
+          </div>
+          <span class="live-pulse" aria-hidden="true"></span>
+        </article>
+        <button class="my-status-launch" type="button" id="openStatusEditor">
+          <span class="my-status-emoji" id="myStatusEmoji" aria-hidden="true">＋</span>
+          <span><small>MY STATUS</small><strong id="myStatusSummary">设置我的状态</strong><em id="myStatusMeta">让 TA 知道你此刻在做什么</em></span>
+          <b>编辑</b>
+        </button>
+      </section>
+
+      <section class="couple-location-section" aria-label="双方城市位置">
+        <div class="location-heading">
+          <div><p class="eyebrow">OUR DISTANCE</p><h2>此刻相距多远</h2></div>
+          <button type="button" class="location-refresh-button" id="refreshLocationButton"><span aria-hidden="true">↻</span> 刷新我的位置</button>
+        </div>
+        <div class="couple-location-card">
+          <article class="person-location mine">
+            <span class="location-avatar" id="myLocationAvatar" aria-hidden="true">我</span>
+            <small>本机 · 我</small>
+            <strong id="myLocationName">我</strong>
+            <p id="myLocationCity">城市待刷新</p>
+            <time id="myLocationUpdated">尚未刷新</time>
+          </article>
+          <div class="distance-bridge" aria-live="polite">
+            <i aria-hidden="true"></i>
+            <strong id="locationDistance">--</strong>
+            <span id="locationDistanceUnit">公里</span>
+            <small id="locationDistanceHint">等待双方刷新</small>
+          </div>
+          <article class="person-location partner">
+            <span class="location-avatar" id="partnerLocationAvatar" aria-hidden="true">TA</span>
+            <small>对象 · TA</small>
+            <strong id="partnerLocationName">TA</strong>
+            <p id="partnerLocationCity">等待 TA 刷新</p>
+            <time id="partnerLocationUpdated">尚未刷新</time>
+          </article>
+        </div>
+        <p class="location-privacy-note"><span aria-hidden="true">⌖</span> 点击刷新时获取一次 GPS 并转换成真实城市；只同步城市级位置，不展示街道和坐标。</p>
+      </section>
+
+      <section class="month-section" aria-label="恋爱日历">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">LOVE LOG</p>
+            <h2 id="monthTitle">2026 年 8 月</h2>
+          </div>
+          <div class="month-controls">
+            <button class="icon-button" id="previousMonth" aria-label="上个月">‹</button>
+            <button class="icon-button" id="todayButton" aria-label="回到今天">●</button>
+            <button class="icon-button" id="nextMonth" aria-label="下个月">›</button>
+          </div>
+        </div>
+        <div class="weekdays" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid" aria-label="日期网格"></div>
+        <div class="calendar-legend">
+          <span><i class="dot rose"></i> 纪念日</span>
+          <span><i class="dot peach"></i> 有照片</span>
+          <span><i class="dot lavender"></i> 有留言</span>
+          <span><i class="dot cycle-dot"></i> 周期预测</span>
+          <span><i class="dot partner-dot"></i> 对方新记录</span>
+        </div>
+      </section>
+
+      <section class="day-sheet" id="daySheet" aria-live="polite">
+        <div class="sheet-handle"></div>
+        <div class="day-heading">
+          <div>
+            <p class="eyebrow" id="selectedWeekday">星期四</p>
+            <h2 id="selectedDate">8 月 13 日</h2>
+          </div>
+          <button class="text-button" id="addMomentButton">＋ 记录今天</button>
+        </div>
+        <div id="dayContent"></div>
+      </section>
+
+      <section class="together-tools" aria-label="异地恋同行工具">
+        <div class="section-heading compact-heading"><div><p class="eyebrow">TOGETHER, APART</p><h2>异地也在同一页</h2></div><button class="text-button" id="remoteSettingsButton">调整</button></div>
+        <div class="remote-grid">
+          <article class="tool-card meeting-card"><span class="tool-icon">⌁</span><p>下一次见面</p><h3 id="meetingCountdown">-- 天</h3><small id="meetingDate">还没有约好日期</small></article>
+          <article class="tool-card clocks-card"><div class="clock-line"><span id="cityALabel">上海</span><strong id="cityATime">--:--</strong></div><div class="clock-line"><span id="cityBLabel">伦敦</span><strong id="cityBTime">--:--</strong></div></article>
+        </div>
+      </section>
+
+      <section class="cycle-card" id="cycleCard" aria-label="生理期预测">
+        <div class="cycle-top"><div class="cycle-icon">✿</div><div><p class="eyebrow">WELLNESS CALENDAR</p><h2 id="cycleTitle">生理期记录与提醒</h2></div><span class="private-chip" id="privacyStatus">仅自己可见</span></div>
+        <div class="cycle-body"><div><p id="cycleHeadline">下一次预计还有 -- 天</p><small id="cycleSubline">设置周期后，日历会以淡紫色标记预测日期</small></div><button class="secondary-button" id="cycleSettingsButton">设置周期</button></div>
+        <div class="cycle-actions"><button class="cycle-record-button" id="cycleRecordButton">今天开始了</button><button class="cycle-reminder-button" id="cycleReminderButton">开启打开应用提醒</button></div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="主导航">
+      <button class="nav-item active" data-view="calendar"><span>▦</span>日历</button>
+      <button class="nav-item" data-view="memories"><span>▧</span>回忆</button>
+      <button class="nav-item" data-view="anniversaries"><span>♡</span>纪念日</button>
+      <button class="nav-item" data-view="settings"><span>◌</span>我们</button>
+    </nav>
+
+    <dialog class="moment-dialog" id="momentDialog">
+      <form method="dialog" id="momentForm">
+        <div class="dialog-title-row"><div><p class="eyebrow">NEW LITTLE MOMENT</p><h2>留住这一天</h2></div><button type="button" class="icon-button close-button" id="momentDialogClose" aria-label="关闭">×</button></div>
+        <p class="date-context" id="formDateContext"></p>
+        <label>这一天的标题<input id="momentTitle" maxlength="26" placeholder="比如：雨天共撑一把伞" required /></label>
+        <div class="type-picker" role="group" aria-label="记录类型">
+          <button type="button" class="type-option selected" data-type="diary">碎碎念</button>
+          <button type="button" class="type-option" data-type="anniversary">纪念日</button>
+          <button type="button" class="type-option" data-type="date">约会</button>
+        </div>
+        <label>想说的话<textarea id="momentNote" maxlength="180" placeholder="今天的小秘密，只给我们看…"></textarea></label>
+        <div class="photo-upload-wrap"><label class="photo-upload"><input id="momentPhoto" type="file" accept="image/*" multiple /><span id="photoUploadLabel">＋ 添加照片 <small>一次最多 9 张，选择后自动优化</small></span></label><div class="photo-preview-grid" id="photoPreviewGrid" aria-label="已选照片预览"></div></div>
+        <div class="author-row identity-locked"><span>将以 <strong id="currentAuthorName">我</strong> 的名义保存</span><span class="device-lock">本机身份</span></div>
+        <button class="primary-button" id="saveMoment" value="default">保存这份心动</button>
+      </form>
+    </dialog>
+
+    <dialog class="status-dialog" id="statusDialog">
+      <form method="dialog" id="statusForm">
+        <div class="dialog-title-row"><div><p class="eyebrow">RIGHT NOW</p><h2>设置我的状态</h2></div><button type="button" class="icon-button close-button" id="statusDialogClose" aria-label="关闭状态编辑">×</button></div>
+        <p class="status-dialog-hint">选一个预设，或者自己组合表情和文字。保存后会显示在 TA 的日历首页。</p>
+        <div class="status-preview" aria-label="状态预览"><span id="statusPreviewEmoji">🌞</span><div><small>状态预览</small><strong id="statusPreviewText">元气满满</strong></div></div>
+        <div class="status-category-tabs" id="statusCategoryTabs" role="tablist" aria-label="状态分类"></div>
+        <div class="status-preset-grid" id="statusPresetGrid" aria-label="预设状态"></div>
+        <div class="custom-status-title"><strong>自定义状态</strong><small>可以只改文字，也可以换成自己的表情</small></div>
+        <div class="custom-status-fields"><label>表情<input id="customStatusEmoji" maxlength="8" placeholder="例如：🦦" aria-label="自定义状态表情" /></label><label>文字<input id="customStatusText" maxlength="20" placeholder="最多 20 个字" aria-label="自定义状态文字" /></label></div>
+        <label class="status-duration-field">状态保留多久<select id="statusDuration"><option value="1h">1 小时</option><option value="4h">4 小时</option><option value="today" selected>到今天结束</option><option value="until">直到我手动更换</option></select></label>
+        <p class="status-form-error" id="statusFormError" role="alert" hidden></p>
+        <button class="primary-button" id="saveStatusButton" value="default">把状态告诉 TA</button>
+        <button class="clear-status-button" type="button" id="clearStatusButton">清除我的状态</button>
+      </form>
+    </dialog>
+
+    <dialog class="share-dialog" id="shareDialog">
+      <form method="dialog">
+        <button class="icon-button close-button dialog-close" value="cancel" aria-label="关闭">×</button>
+        <div class="share-illustration">⌁</div>
+        <p class="eyebrow">COUPLE SPACE</p><h2>把小宇宙分享给 TA</h2>
+        <p id="shareDialogCopy">请先完成资料并创建情侣空间，邀请码会在这里出现。</p>
+        <div class="invite-code-box" id="inviteCodeBox" hidden><strong>只给 TA 第一次加入的邀请码</strong><p id="inviteCodeHint">请直接复制，不要手动改写；TA 加入成功后，这个邀请码不能再添加第三个人。</p><div class="invite-code-copy-row"><code id="inviteCodeValue" tabindex="0" title="点击复制邀请码"></code><button class="invite-copy-button" type="button" id="copyInviteCode"><span aria-hidden="true">⧉</span> 一键复制</button></div><p class="copy-feedback" id="inviteCopyFeedback" role="status" aria-live="polite" hidden></p><button class="text-button" type="button" id="newInviteCode">生成新的邀请码</button></div>
+        <div class="device-sync-box" id="deviceSyncBox" hidden><strong>同步我自己的另一台设备</strong><p>这是你的个人设备同步码，只发给自己的手机或电脑；不要发给 TA。</p><code id="deviceSyncCode"></code><button class="text-button" type="button" id="copyDeviceCode">复制同步码</button></div>
+        <button class="primary-button" id="copyRoadmap" value="cancel">知道了</button>
+      </form>
+    </dialog>
+
+    <dialog class="onboarding-dialog" id="onboardingDialog">
+      <form method="dialog" id="onboardingForm" novalidate>
+        <div class="onboarding-art"><span>♡</span><i>✦</i></div>
+        <p class="eyebrow">WELCOME TO YOUR LITTLE UNIVERSE</p>
+        <h2 id="onboardingTitle">先为你们建一份档案</h2>
+        <p class="onboarding-copy">先建立一个情侣空间，再分别定义两位使用者。每个人打开自己的设备时，都以自己的身份进入同一个空间。</p>
+        <div class="space-mode" aria-label="情侣空间方式"><button type="button" class="selected" data-space-mode="create"><span>＋</span> 创建情侣空间</button><button type="button" data-space-mode="join"><span>⌁</span> 加入情侣空间</button><button type="button" data-space-mode="device"><span>↗</span> 同步我的设备</button></div>
+        <p class="join-explanation" id="joinExplanation" hidden>加入需要对方发来的邀请码；邀请码会让你们进入同一个私密的情侣空间。</p>
+        <label class="join-code-field" id="joinCodeField" hidden>对方的邀请码<input id="inviteCodeInput" autocomplete="off" maxlength="64" placeholder="例如：LOVE-1A2B3C4D" /></label>
+        <p class="device-explanation" id="deviceExplanation" hidden>电脑和手机是同一个人时，输入你自己设备上“邀请”按钮里的个人设备同步码。它不会占用 TA 的身份。</p>
+        <label class="device-code-field" id="deviceCodeField" hidden>我的设备同步码<input id="deviceCodeInput" autocomplete="off" maxlength="160" placeholder="例如：HC1-…" /></label>
+        <input id="spaceModeInput" type="hidden" value="create" />
+        <input id="myGenderInput" type="hidden" required />
+        <input id="partnerGenderInput" type="hidden" required />
+        <div class="identity-grid setup-only"><div id="myGenderField"><p>我是</p><div class="gender-picker" data-gender-target="myGenderInput"><button type="button" data-gender="female"><b>♀</b> 女生</button><button type="button" data-gender="male"><b>♂</b> 男生</button></div></div><div id="partnerGenderField"><p>TA 是</p><div class="gender-picker" data-gender-target="partnerGenderInput"><button type="button" data-gender="female"><b>♀</b> 女生</button><button type="button" data-gender="male"><b>♂</b> 男生</button></div></div></div>
+        <p class="identity-tip setup-only" id="identityTip">先选身份；这台设备会自动记住“我是谁”。</p>
+        <div class="profile-grid setup-only">
+          <label>你的名字<input id="myNameInput" maxlength="12" placeholder="例如：小夏" required /></label>
+          <label><span id="partnerNameLabel">TA 的名字</span><input id="partnerNameInput" maxlength="12" placeholder="例如：阿林" required /></label>
+          <label><span id="partnerNicknameLabel">你想叫 TA 什么</span><input id="partnerNicknameInput" maxlength="12" placeholder="例如：宝贝" required /></label>
+          <label><span id="myNicknameLabel">TA 想叫你什么</span><input id="myNicknameInput" maxlength="12" placeholder="例如：宝宝" required /></label>
+        </div>
+        <label class="setup-only">恋爱开始日期<input id="loveStartInput" type="date" required /></label>
+        <label class="distance-choice setup-only"><input id="longDistanceInput" type="checkbox" /><span><strong>我们目前是异地恋</strong><small>保存后双方分别授权定位，系统会自动更新真实城市、距离和当地时间。</small></span></label>
+        <div class="onboarding-validation-summary" id="onboardingValidationSummary" role="alert" aria-live="assertive" hidden></div>
+        <button class="primary-button" id="onboardingSubmitButton" value="default">保存我们的开始</button>
+      </form>
+    </dialog>
+
+    <dialog class="location-permission-dialog" id="locationPermissionDialog">
+      <form method="dialog">
+        <div class="location-permission-icon" aria-hidden="true">⌖</div>
+        <p class="eyebrow">LOCATION, WITH CONSENT</p>
+        <h2>要看看彼此相距多远吗？</h2>
+        <p>双方需要在自己的设备上分别授权。我们只在你点击刷新时读取一次 GPS，并自动更新真实城市、距离和双城时间；同步前会把坐标降低到城市级精度。</p>
+        <ul><li>不会持续追踪</li><li>不会显示街道或地图坐标</li><li>随时可以在浏览器设置中关闭权限</li></ul>
+        <p class="location-permission-message" id="locationPermissionMessage" role="status" aria-live="polite" hidden></p>
+        <button type="button" class="primary-button" id="allowLocationButton">允许并刷新我的位置</button>
+        <button type="button" class="location-later-button" id="skipLocationButton">稍后再说</button>
+      </form>
+    </dialog>
+
+    <dialog class="settings-dialog" id="remoteDialog">
+      <form method="dialog" id="remoteForm">
+        <div class="dialog-title-row"><div><p class="eyebrow">LONG DISTANCE, CLOSE HEARTS</p><h2>异地小设定</h2></div><button type="button" class="icon-button close-button" data-close-dialog="remoteDialog" aria-label="关闭">×</button></div>
+        <label>下一次见面的日期<input id="meetingInput" type="date" /></label>
+        <p class="dialog-hint">双方城市和当地时间由各自设备的“刷新我的位置”自动更新，不需要手动填写。</p>
+        <button class="primary-button" value="default">保存小设定</button>
+      </form>
+    </dialog>
+
+    <dialog class="settings-dialog" id="cycleDialog">
+      <form method="dialog" id="cycleForm">
+        <div class="dialog-title-row"><div><p class="eyebrow">GENTLE REMINDER</p><h2>生理期预测</h2></div><button type="button" class="icon-button close-button" data-close-dialog="cycleDialog" aria-label="关闭">×</button></div>
+        <p class="dialog-hint">这是私密健康记录。预测仅供参考，不代替医疗建议；是否在情侣空间显示，始终由记录者决定。</p>
+        <label>最近一次开始日期<input id="cycleStartInput" type="date" required /></label>
+        <div class="city-inputs"><label>平均周期<select id="cycleLengthInput"><option value="28">28 天</option><option value="29">29 天</option><option value="30">30 天</option><option value="31">31 天</option></select></label><label>经期通常持续<select id="cycleDaysInput"><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select></label></div>
+        <label>提前提醒<select id="cycleReminderInput"><option value="0">当天提醒</option><option value="1">提前 1 天</option><option value="2">提前 2 天</option><option value="3">提前 3 天</option></select></label>
+        <label class="privacy-choice"><input id="cycleSharedInput" type="checkbox" /><span><strong>同步到情侣日历</strong><small>关闭时，只有记录者的设备会显示预测标记</small></span></label>
+        <button class="primary-button" value="default">保存预测</button>
+      </form>
+    </dialog>
+
+    <dialog class="collection-dialog" id="memoriesDialog">
+      <div class="memories-page-shell"><header class="memories-page-header"><div class="dialog-title-row"><div><p class="eyebrow">OUR MEMORY LANE</p><h2>回忆</h2></div><button type="button" class="icon-button close-button" id="memoriesDialogClose" aria-label="关闭回忆页面">×</button></div><p class="dialog-hint">所有照片、碎碎念、约会和你们的评论，按时间留在这里。</p></header><div class="collection-list" id="memoriesList"></div></div>
+    </dialog>
+
+    <dialog class="photo-viewer-dialog" id="photoViewerDialog" aria-label="照片查看器">
+      <button type="button" class="photo-viewer-close" id="photoViewerClose" aria-label="关闭照片">×</button>
+      <button type="button" class="photo-viewer-arrow previous" id="photoViewerPrevious" aria-label="上一张">‹</button>
+      <figure><img id="photoViewerImage" alt="放大的回忆照片" /><figcaption id="photoViewerCaption"></figcaption></figure>
+      <button type="button" class="photo-viewer-arrow next" id="photoViewerNext" aria-label="下一张">›</button>
+    </dialog>
+
+    <dialog class="collection-dialog" id="anniversariesDialog">
+      <form method="dialog"><div class="dialog-title-row"><div><p class="eyebrow">OUR SPECIAL DAYS</p><h2>纪念日</h2></div><button class="icon-button close-button" value="cancel" aria-label="关闭">×</button></div><p class="dialog-hint">重要的日子会在日历中用心形标记。</p><div class="collection-list" id="anniversariesList"></div><button type="button" class="primary-button collection-add" id="addAnniversaryButton">＋ 新增纪念日</button></form>
+    </dialog>
+
+    <template id="emptyDayTemplate">
+      <div class="empty-day"><div class="empty-heart">♡</div><h3>这一天还是空白的</h3><p>照片、纪念日和一句小心事，都可以留在这里。</p><button class="secondary-button">写下第一条</button></div>
+    </template>
+    <script src="config.js?v=community-1"></script>
+    <script src="vendor/cloudbase.full.js?v=community-1"></script>
+    <script src="cloud-client.js?v=community-1"></script>
+    <script src="location-utils.js?v=community-1"></script>
+    <script src="calendar-date.js?v=community-1"></script>
+    <script src="app.js?v=community-1"></script>
+  </body>
+</html>

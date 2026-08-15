@@ -1,0 +1,9 @@
+{
+  "name": "couple-calendar",
+  "version": "2.0.0",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@cloudbase/node-sdk": "3.18.3"
+  }
+}

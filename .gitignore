@@ -1,0 +1,15 @@
+# Local deployment configuration and secrets
+app/config.local.js
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated artifacts
+node_modules/
+release/
+*.zip
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
