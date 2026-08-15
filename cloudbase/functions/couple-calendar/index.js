@@ -25,11 +25,20 @@ function initialiseCloud(context) {
 }
 const SPACES = 'heartbeat_spaces';
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+// CloudBase Storage limits file-list operations such as getTempFileURL and
+// deleteFile to 50 files per request. Batch these operations so long-running
+// spaces can keep thousands of photos without failing the whole memory wall.
+const MAX_STORAGE_FILES_PER_REQUEST = 50;
 
 const random = (bytes = 18) => crypto.randomBytes(bytes).toString('base64url');
 const hash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const now = () => new Date().toISOString();
 const fail = (message) => ({ ok: false, message });
+const chunk = (items, size = MAX_STORAGE_FILES_PER_REQUEST) => {
+  const groups = [];
+  for (let index = 0; index < items.length; index += size) groups.push(items.slice(index, index + size));
+  return groups;
+};
 
 function inviteCode() {
   // Hex is deliberately used here instead of base64url: removing "-" and
@@ -414,12 +423,15 @@ exports.main = async (event = {}, context = {}) => {
 
     if (event.action === 'getPhotoUrls') {
       const prefix = `/heartbeat-calendar/${space.id}/`;
-      const fileList = (Array.isArray(event.fileIDs) ? event.fileIDs : [])
-        .filter((fileID) => String(fileID).includes(prefix))
-        .slice(0, 120);
+      const fileList = [...new Set((Array.isArray(event.fileIDs) ? event.fileIDs : [])
+        .filter((fileID) => String(fileID).includes(prefix)))];
       if (!fileList.length) return { ok: true, fileList: [], memberRole };
-      const result = await app.getTempFileURL({ fileList });
-      return { ok: true, fileList: result.fileList || [], memberRole };
+      const resolved = [];
+      for (const fileBatch of chunk(fileList)) {
+        const result = await app.getTempFileURL({ fileList: fileBatch });
+        resolved.push(...(result.fileList || []));
+      }
+      return { ok: true, fileList: resolved, memberRole };
     }
 
     if (event.action === 'pull') {
@@ -437,7 +449,7 @@ exports.main = async (event = {}, context = {}) => {
       const files = (Array.isArray(event.fileIDs) ? event.fileIDs : []).filter((fileID) =>
         String(fileID).includes(`/heartbeat-calendar/${space.id}/`)
       );
-      if (files.length) await app.deleteFile({ fileList: files });
+      for (const fileBatch of chunk(files)) await app.deleteFile({ fileList: fileBatch });
       return { ok: true, memberRole };
     }
 

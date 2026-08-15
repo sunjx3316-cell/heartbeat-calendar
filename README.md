@@ -14,6 +14,8 @@ their own Tencent Cloud CloudBase environment.
 - A single CloudBase function in [`cloudbase/functions/couple-calendar/`](cloudbase/functions/couple-calendar/)
 - A minimal PostgreSQL table for each independently-owned couple space
 - Deployment instructions that keep the service API key server-only
+- Batched photo URL/deletion operations for long-running, photo-heavy spaces
+- Full-screen memory feed and single-post views with comments
 
 ## Quick start
 
@@ -49,6 +51,7 @@ With Node.js 18 or newer:
 node tests/calendar-date-smoke.cjs
 node tests/location-utils-smoke.cjs
 node tests/cloud-function-smoke.cjs
+node tests/moment-detail-smoke.cjs
 ```
 
 ## Publish it to GitHub

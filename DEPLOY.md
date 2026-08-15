@@ -71,6 +71,11 @@ Open the deployed web address in an incognito window. The first save should
 create a space and display an invite code. Open the same address on a second
 device and use that invite code to join.
 
+Photo URL and deletion requests are automatically split into batches of 50 to
+respect CloudBase Storage limits. Do not reintroduce a total-photo cap when
+customising the function; the browser also resolves large libraries in small,
+cached batches.
+
 ## Troubleshooting
 
 - **"尚未配置云端"**: edit `app/config.js` and redeploy it.

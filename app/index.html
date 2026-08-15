@@ -10,8 +10,8 @@
     <meta name="apple-mobile-web-app-title" content="心动日历" />
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icons/icon-192.svg" />
-    <link rel="stylesheet" href="styles.css?v=45" />
-    <link rel="stylesheet" href="extras.css?v=45" />
+    <link rel="stylesheet" href="styles.css?v=community-2" />
+    <link rel="stylesheet" href="extras.css?v=community-2" />
     <title>心动日历</title>
   </head>
   <body>
@@ -258,6 +258,10 @@
       <div class="memories-page-shell"><header class="memories-page-header"><div class="dialog-title-row"><div><p class="eyebrow">OUR MEMORY LANE</p><h2>回忆</h2></div><button type="button" class="icon-button close-button" id="memoriesDialogClose" aria-label="关闭回忆页面">×</button></div><p class="dialog-hint">所有照片、碎碎念、约会和你们的评论，按时间留在这里。</p></header><div class="collection-list" id="memoriesList"></div></div>
     </dialog>
 
+    <dialog class="collection-dialog" id="momentDetailDialog">
+      <div class="moment-detail-page-shell"><header class="memories-page-header"><div class="dialog-title-row"><div><p class="eyebrow">ONE LITTLE MOMENT</p><h2 id="momentDetailHeading">帖子详情</h2></div><button type="button" class="icon-button close-button" id="momentDetailClose" aria-label="关闭帖子详情">×</button></div><p class="dialog-hint" id="momentDetailHint">这一天留下的心动，会一直在这里。</p></header><div id="momentDetailContent"></div></div>
+    </dialog>
+
     <dialog class="photo-viewer-dialog" id="photoViewerDialog" aria-label="照片查看器">
       <button type="button" class="photo-viewer-close" id="photoViewerClose" aria-label="关闭照片">×</button>
       <button type="button" class="photo-viewer-arrow previous" id="photoViewerPrevious" aria-label="上一张">‹</button>
@@ -272,11 +276,11 @@
     <template id="emptyDayTemplate">
       <div class="empty-day"><div class="empty-heart">♡</div><h3>这一天还是空白的</h3><p>照片、纪念日和一句小心事，都可以留在这里。</p><button class="secondary-button">写下第一条</button></div>
     </template>
-    <script src="config.js?v=community-1"></script>
-    <script src="vendor/cloudbase.full.js?v=community-1"></script>
-    <script src="cloud-client.js?v=community-1"></script>
-    <script src="location-utils.js?v=community-1"></script>
-    <script src="calendar-date.js?v=community-1"></script>
-    <script src="app.js?v=community-1"></script>
+    <script src="config.js?v=community-2"></script>
+    <script src="vendor/cloudbase.full.js?v=community-2"></script>
+    <script src="cloud-client.js?v=community-2"></script>
+    <script src="location-utils.js?v=community-2"></script>
+    <script src="calendar-date.js?v=community-2"></script>
+    <script src="app.js?v=community-2"></script>
   </body>
 </html>

@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 const records = new Map();
+const tempUrlBatchSizes = [];
+const deleteBatchSizes = [];
 const clone = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
 
 function selectQuery(field, value) {
@@ -32,13 +34,19 @@ function tableClient() {
 
 const fakeApp = {
   rdb() { return { from: () => tableClient() }; },
-  async deleteFile() { return { fileList: [] }; },
+  async deleteFile({ fileList }) {
+    assert(fileList.length <= 50, 'deleteFile batch exceeded CloudBase limit');
+    deleteBatchSizes.push(fileList.length);
+    return { fileList: [] };
+  },
   async uploadFile({ cloudPath, fileContent }) {
     assert.match(cloudPath, /^heartbeat-calendar\/[0-9a-f-]+\/[A-Za-z0-9_-]+\.jpg$/);
     assert(fileContent.length > 0);
     return { fileID: `cloud://test.bucket/${cloudPath}` };
   },
   async getTempFileURL({ fileList }) {
+    assert(fileList.length <= 50, 'getTempFileURL batch exceeded CloudBase limit');
+    tempUrlBatchSizes.push(fileList.length);
     return { fileList: fileList.map((fileID) => ({ fileID, tempFileURL: `https://photos.example/${encodeURIComponent(fileID)}` })) };
   }
 };
@@ -326,6 +334,21 @@ async function run() {
   const urls = await api({ action: 'getPhotoUrls', session: joined.session, fileIDs: [uploaded.fileID] });
   assert.equal(urls.ok, true);
   assert.equal(urls.fileList[0].fileID, uploaded.fileID);
+
+  // CloudBase accepts at most 50 files per storage operation. A large,
+  // long-running memory wall must be transparently split, not capped.
+  tempUrlBatchSizes.length = 0;
+  deleteBatchSizes.length = 0;
+  const manyFileIDs = Array.from({ length: 125 }, (_, index) =>
+    `cloud://test.bucket/heartbeat-calendar/${created.session.spaceId}/photo-${index}.jpg`
+  );
+  const manyUrls = await api({ action: 'getPhotoUrls', session: joined.session, fileIDs: manyFileIDs });
+  assert.equal(manyUrls.ok, true);
+  assert.equal(manyUrls.fileList.length, 125);
+  assert.deepEqual(tempUrlBatchSizes, [50, 50, 25]);
+  const manyDeleted = await api({ action: 'deletePhotos', session: created.session, fileIDs: manyFileIDs });
+  assert.equal(manyDeleted.ok, true);
+  assert.deepEqual(deleteBatchSizes, [50, 50, 25]);
 
   const rejected = await api({ action: 'pull', session: { spaceId: created.session.spaceId, memberToken: 'wrong' } });
   assert.equal(rejected.ok, false);
