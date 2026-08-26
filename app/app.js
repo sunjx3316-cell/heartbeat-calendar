@@ -35,9 +35,30 @@ let statusEditorGroup = 'daily';
 let selectedStatusPreset = 'A1';
 let locationRefreshInFlight = false;
 
+function compactMomentForLocalStorage(moment = {}) {
+  // Earlier builds stored every pending data URL in both `photos` and
+  // `storagePhotos`.  JSON serialises both arrays, so a photo used twice the
+  // Safari localStorage quota.  Keep one copy when they are identical; cloud
+  // IDs and temporary display URLs are deliberately kept separately.
+  const photos = Array.isArray(moment.photos) ? moment.photos : [];
+  const stored = Array.isArray(moment.storagePhotos) ? moment.storagePhotos : [];
+  if (!stored.length || stored.length !== photos.length || !stored.every((photo, index) => photo === photos[index])) return moment;
+  const compacted = { ...moment };
+  delete compacted.storagePhotos;
+  return compacted;
+}
 function loadMoments() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || BASE_MOMENTS; }
-  catch { return BASE_MOMENTS; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)) || BASE_MOMENTS;
+    const moments = saved.map(compactMomentForLocalStorage);
+    if (moments.some((moment, index) => moment !== saved[index])) {
+      // Rewriting a smaller value is safe and immediately releases the old
+      // duplicated local photo strings before the user creates another post.
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(moments)); }
+      catch (error) { console.warn('本地照片副本将在下次保存时清理：', error); }
+    }
+    return moments;
+  } catch { return BASE_MOMENTS; }
 }
 function saveMoments() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.moments)); }
 function defaultSettings() {
@@ -123,10 +144,18 @@ function remoteForMember(remote = {}, memberRole = '') {
     ? { ...remote, cityA: remote.cityB, cityB: remote.cityA }
     : remote;
 }
+function storagePhotosForMoment(moment = {}) {
+  return Array.isArray(moment.storagePhotos) && moment.storagePhotos.length
+    ? moment.storagePhotos.filter(Boolean)
+    : momentPhotos(moment);
+}
 function sharedSnapshot() {
   return {
     coupleProfile: canonicalProfile(),
-    moments: state.moments.map((moment) => ({ ...moment, photos: moment.storagePhotos || moment.photos || [], photo: (moment.storagePhotos || moment.photos || [])[0] || '' })),
+    moments: state.moments.map((moment) => {
+      const photos = storagePhotosForMoment(moment);
+      return { ...moment, photos, photo: photos[0] || '' };
+    }),
     deletedMomentIds: Array.isArray(state.settings.cloud.deletedMomentIds) ? state.settings.cloud.deletedMomentIds : [],
     remote: canonicalRemote(),
     cycle: state.settings.cycle && state.settings.cycle.shared ? state.settings.cycle : null,
@@ -164,7 +193,7 @@ function setSyncStatus(text, synced = false) {
   status.innerHTML = `<i></i> ${text}`; status.classList.toggle('synced', synced);
 }
 function hasPendingPhotoUploads() {
-  return state.moments.some((moment) => (moment.storagePhotos || moment.photos || []).some((photo) => /^data:/.test(photo)));
+  return state.moments.some((moment) => storagePhotosForMoment(moment).some((photo) => /^data:/.test(photo)));
 }
 async function resizePhoto(dataUrl, maxSide = 1280, quality = 0.74) {
   if (!/^data:image\//.test(dataUrl)) return dataUrl;
@@ -188,18 +217,18 @@ async function photoForCloud(dataUrl) {
   // New selections are already optimized. This fallback also compacts
   // originals left pending by an older app version.
   if (!/^data:image\//.test(dataUrl)) return dataUrl;
-  if (dataUrl.length < 900 * 1024) return dataUrl;
-  return resizePhoto(dataUrl, 1280, 0.74);
+  if (dataUrl.length < 650 * 1024) return dataUrl;
+  return resizePhoto(dataUrl, 1080, 0.7);
 }
 async function uploadPendingPhotos() {
   const session = cloudSession();
   if (!hasPendingPhotoUploads()) return null;
   if (!session || !window.HeartbeatCloud) return new Error('照片尚未连接到情侣空间');
   let firstError = null;
-  const total = state.moments.reduce((count, moment) => count + (moment.storagePhotos || moment.photos || []).filter((photo) => /^data:/.test(photo)).length, 0);
+  const total = state.moments.reduce((count, moment) => count + storagePhotosForMoment(moment).filter((photo) => /^data:/.test(photo)).length, 0);
   let completed = 0;
   for (const moment of state.moments) {
-    const originals = [...(moment.storagePhotos || moment.photos || [])];
+    const originals = [...storagePhotosForMoment(moment)];
     if (!originals.some((photo) => /^data:/.test(photo))) continue;
     for (let index = 0; index < originals.length; index += 1) {
       if (!/^data:/.test(originals[index])) continue;
@@ -827,7 +856,7 @@ $('#momentPhoto').addEventListener('change', async (event) => {
         reader.onerror = () => reject(new Error('照片读取失败'));
         reader.readAsDataURL(files[index]);
       });
-      state.photos.push(await resizePhoto(dataUrl, 1280, 0.74));
+      state.photos.push(await resizePhoto(dataUrl, 1080, 0.7));
       renderPhotoPreviews();
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -861,16 +890,18 @@ $('#momentForm').addEventListener('submit', async (event) => {
   event.preventDefault(); const title = $('#momentTitle').value.trim(); if (!title) return;
   const button = $('#saveMoment'); button.disabled = true;
   const photos = [...state.photos];
-  // Save the optimized local copies first. A temporary network or storage
-  // error must never make the record disappear from this device.
+  // Keep one compressed local copy only while CloudBase is uploading it.
+  // Each successful upload replaces that data URL with a cloud:// reference,
+  // releasing browser storage immediately.  Do not add a duplicate
+  // `storagePhotos` field here: Safari counts both copies against its quota.
   const role = currentMemberRole();
-  const pendingMoment = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, date: state.selected, type: state.formType, title, note: $('#momentNote').value.trim(), author: profile().myName, authorRole: role, createdAt: new Date().toISOString(), seenBy: [role], comments: [], photos, storagePhotos: photos, photo: photos[0] || '' };
+  const pendingMoment = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, date: state.selected, type: state.formType, title, note: $('#momentNote').value.trim(), author: profile().myName, authorRole: role, createdAt: new Date().toISOString(), seenBy: [role], comments: [], photos, photo: photos[0] || '' };
   state.moments.unshift(pendingMoment);
   try {
     saveMoments();
   } catch (error) {
     state.moments.shift(); button.disabled = false;
-    alert('手机浏览器的本地空间不足，记录尚未发布。请删除一部分旧的本机照片后重试。');
+    alert('手机浏览器的本地空间不足，记录尚未发布。请先等待旧照片同步完成，或减少本次照片数量后重试。');
     return;
   }
   momentDialog.close(); renderAll();
@@ -1216,7 +1247,7 @@ $('#memoriesList').addEventListener('click', (event) => {
   if (photoButton) {
     const moment = state.moments.find((item) => item.id === photoButton.dataset.deletePhoto);
     if (!moment || !canEditMoment(moment) || !confirm('删除这张照片吗？')) return;
-    const photos = momentPhotos(moment); photos.splice(Number(photoButton.dataset.photoIndex), 1); moment.photos = photos; moment.storagePhotos = photos; moment.photo = photos[0] || ''; saveMoments(); renderAll(); renderMemoryFeed(); void pushCloud(); return;
+    const photos = storagePhotosForMoment(moment); photos.splice(Number(photoButton.dataset.photoIndex), 1); moment.photos = photos; moment.storagePhotos = photos; moment.photo = photos[0] || ''; saveMoments(); renderAll(); renderMemoryFeed(); void pushCloud(); return;
   }
   if (momentButton) {
     const moment = state.moments.find((item) => item.id === momentButton.dataset.deleteMoment);
@@ -1257,7 +1288,7 @@ $('#momentDetailContent').addEventListener('click', (event) => {
   if (photoButton) {
     const moment = state.moments.find((item) => item.id === photoButton.dataset.deletePhoto);
     if (!moment || !canEditMoment(moment) || !confirm('删除这张照片吗？')) return;
-    const photos = momentPhotos(moment); photos.splice(Number(photoButton.dataset.photoIndex), 1); moment.photos = photos; moment.storagePhotos = photos; moment.photo = photos[0] || '';
+    const photos = storagePhotosForMoment(moment); photos.splice(Number(photoButton.dataset.photoIndex), 1); moment.photos = photos; moment.storagePhotos = photos; moment.photo = photos[0] || '';
     saveMoments(); renderAll(); renderMemoryFeed(); renderMomentDetail(moment.id); void pushCloud(); return;
   }
   if (momentButton) {
