@@ -16,13 +16,14 @@ their own Tencent Cloud CloudBase environment.
 - Deployment instructions that keep the service API key server-only
 - Batched photo URL/deletion operations for long-running, photo-heavy spaces
 - Full-screen memory feed and single-post views with comments
+- Opt-in Web Push notifications for a partner's new posts and comments
 
 ## Quick start
 
 Follow [the deployment guide](DEPLOY.md). In short:
 
 1. Create your own CloudBase environment and PostgreSQL table.
-2. Deploy the function and configure its two runtime environment variables.
+2. Deploy the function and configure its CloudBase plus Web Push runtime environment variables.
 3. Put your **environment ID only** in `app/config.js`.
 4. Deploy `app/` to your own static hosting service.
 

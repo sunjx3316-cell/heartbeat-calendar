@@ -161,7 +161,7 @@
   }
 
   window.HeartbeatCloud = {
-    version: 'cloudbase-community-v2-photo-batches-post-detail',
+    version: 'cloudbase-community-v3-web-push',
     environmentId: ENV_ID,
     describeError,
     initialise,
@@ -170,6 +170,9 @@
     newInvite(session) { return call('newInvite', { session }); },
     pull(session) { return call('pull', { session }); },
     push(session, snapshot) { return call('push', { session, snapshot }); },
+    pushConfig(session) { return call('pushConfig', { session }); },
+    subscribePush(session, subscription) { return call('subscribePush', { session, subscription }); },
+    unsubscribePush(session, endpoint) { return call('unsubscribePush', { session, endpoint }); },
     deletePhotos(session, fileIDs) {
       (fileIDs || []).forEach((fileID) => photoUrlCache.delete(fileID));
       return call('deletePhotos', { session, fileIDs });

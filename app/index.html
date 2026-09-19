@@ -9,9 +9,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="心动日历" />
     <link rel="manifest" href="manifest.json" />
-    <link rel="apple-touch-icon" href="icons/icon-192.svg" />
-    <link rel="stylesheet" href="styles.css?v=community-3" />
-    <link rel="stylesheet" href="extras.css?v=community-3" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css?v=community-5" />
+    <link rel="stylesheet" href="extras.css?v=community-5" />
     <title>心动日历</title>
   </head>
   <body>
@@ -20,7 +20,7 @@
         <div class="hero-topline">
           <button class="icon-button soft" id="profileButton" aria-label="情侣档案">♡</button>
           <span class="sync-chip" id="syncStatus"><i></i> 本机私密保存</span>
-          <button class="icon-button soft" id="shareButton" aria-label="邀请另一半">⌁</button>
+          <div class="hero-actions"><button class="icon-button soft" id="notificationButton" aria-label="消息提醒">🔔</button><button class="icon-button soft" id="shareButton" aria-label="邀请另一半">⌁</button></div>
         </div>
         <div class="couple-heading">
           <div class="avatars" aria-hidden="true">
@@ -262,6 +262,18 @@
       <div class="moment-detail-page-shell"><header class="memories-page-header"><div class="dialog-title-row"><div><p class="eyebrow">ONE LITTLE MOMENT</p><h2 id="momentDetailHeading">帖子详情</h2></div><button type="button" class="icon-button close-button" id="momentDetailClose" aria-label="关闭帖子详情">×</button></div><p class="dialog-hint" id="momentDetailHint">这一天留下的心动，会一直在这里。</p></header><div id="momentDetailContent"></div></div>
     </dialog>
 
+    <dialog class="settings-dialog" id="notificationDialog">
+      <form method="dialog">
+        <div class="dialog-title-row"><div><p class="eyebrow">JUST FOR US</p><h2>消息提醒</h2></div><button type="button" class="icon-button close-button" id="notificationDialogClose" aria-label="关闭消息提醒">×</button></div>
+        <div class="notification-illustration" aria-hidden="true">♧</div>
+        <p class="dialog-hint" id="notificationDialogCopy">开启后，TA 发布记录或评论时会提醒你；通知不会显示正文、照片或地点。</p>
+        <div class="notification-status" id="notificationStatus" role="status"></div>
+        <button type="button" class="primary-button" id="notificationEnableButton">开启消息提醒</button>
+        <button type="button" class="text-button notification-disable" id="notificationDisableButton" hidden>关闭这台设备的提醒</button>
+        <p class="notification-privacy-note">只在你主动点击“开启”后请求系统权限。iPhone 需先将网站添加到主屏幕，再从桌面图标打开。</p>
+      </form>
+    </dialog>
+
     <dialog class="photo-viewer-dialog" id="photoViewerDialog" aria-label="照片查看器">
       <button type="button" class="photo-viewer-close" id="photoViewerClose" aria-label="关闭照片">×</button>
       <button type="button" class="photo-viewer-arrow previous" id="photoViewerPrevious" aria-label="上一张">‹</button>
@@ -276,11 +288,11 @@
     <template id="emptyDayTemplate">
       <div class="empty-day"><div class="empty-heart">♡</div><h3>这一天还是空白的</h3><p>照片、纪念日和一句小心事，都可以留在这里。</p><button class="secondary-button">写下第一条</button></div>
     </template>
-    <script src="config.js?v=community-3"></script>
-    <script src="vendor/cloudbase.full.js?v=community-3"></script>
-    <script src="cloud-client.js?v=community-3"></script>
-    <script src="location-utils.js?v=community-3"></script>
-    <script src="calendar-date.js?v=community-3"></script>
-    <script src="app.js?v=community-3"></script>
+    <script src="config.js?v=community-7"></script>
+    <script src="vendor/cloudbase.full.js?v=community-7"></script>
+    <script src="cloud-client.js?v=community-7"></script>
+    <script src="location-utils.js?v=community-7"></script>
+    <script src="calendar-date.js?v=community-7"></script>
+    <script src="app.js?v=community-7"></script>
   </body>
 </html>

@@ -47,10 +47,24 @@ environment variables create:
 | --- | --- |
 | `CLOUDBASE_ENV_ID` | your CloudBase environment ID |
 | `CLOUDBASE_APIKEY` | the server API key from step 2 |
+| `VAPID_PUBLIC_KEY` | generated public Web Push key |
+| `VAPID_PRIVATE_KEY` | generated private Web Push key — keep it secret |
+| `VAPID_SUBJECT` | contact URI, for example `mailto:you@example.com` |
 
 The function needs outbound network access because it calls the CloudBase
 PostgreSQL REST gateway. Do not enable a public HTTP endpoint for this function
 unless you separately add authentication and rate limiting.
+
+To generate the Web Push keys, run this once in the function directory:
+
+```powershell
+node generate-vapid-keys.cjs
+```
+
+Copy the resulting values into the function environment variables, then deploy
+with dependencies installed. Never commit the generated private key. On iPhone,
+push works only after the HTTPS web app has been added to the Home Screen and
+opened from that icon; the permission request must come from the user's tap.
 
 ## 4. Configure and publish the web app
 

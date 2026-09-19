@@ -4,6 +4,7 @@
   "main": "index.js",
   "private": true,
   "dependencies": {
-    "@cloudbase/node-sdk": "3.18.3"
+    "@cloudbase/node-sdk": "3.18.3",
+    "web-push": "3.6.7"
   }
 }

@@ -2,13 +2,14 @@
   "name": "心动日历",
   "short_name": "心动日历",
   "description": "两个人的专属恋爱日历",
+  "id": "./",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#fff7f3",
   "theme_color": "#fa6f8c",
   "lang": "zh-CN",
   "icons": [
-    { "src": "icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
-    { "src": "icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

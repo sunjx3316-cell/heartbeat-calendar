@@ -3,6 +3,10 @@ const fs = require('fs');
 const path = require('path');
 
 const records = new Map();
+let transientReadFailures = 0;
+let transientWriteFailures = 0;
+let sqlReadFallbacks = 0;
+let sqlWriteFallbacks = 0;
 const tempUrlBatchSizes = [];
 const deleteBatchSizes = [];
 const clone = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
@@ -57,15 +61,55 @@ const fakeCloudbase = {
 };
 
 process.env.CLOUDBASE_APIKEY = 'test-service-api-key';
+process.env.VAPID_SUBJECT = 'mailto:test@example.com';
+process.env.VAPID_PUBLIC_KEY = 'test-public-key';
+process.env.VAPID_PRIVATE_KEY = 'test-private-key';
+const sentPushes = [];
+const fakeWebPush = {
+  setVapidDetails(subject, publicKey, privateKey) {
+    assert.equal(subject, process.env.VAPID_SUBJECT);
+    assert.equal(publicKey, process.env.VAPID_PUBLIC_KEY);
+    assert.equal(privateKey, process.env.VAPID_PRIVATE_KEY);
+  },
+  async sendNotification(subscription, payload, options) {
+    sentPushes.push({ subscription: clone(subscription), payload: JSON.parse(payload), options });
+  }
+};
 process.env.CLOUDBASE_ENV_ID = 'test-env';
 global.fetch = async (input, options = {}) => {
   const url = new URL(String(input));
+  if (url.pathname === '/v1/rdb/exec-pgsql') {
+    const sql = JSON.parse(options.body || '{}').sql || '';
+    const match = sql.match(/WHERE id = '([0-9a-f-]{36})'/i);
+    assert(match, 'SQL fallback must use a validated space ID');
+    const row = records.get(match[1]);
+    if (/^UPDATE /i.test(sql)) {
+      sqlWriteFallbacks += 1;
+      const revision = Number(sql.match(/revision = (\d+) WHERE/)[1]);
+      const expected = Number(sql.match(/AND revision = (\d+)/)[1]);
+      const encoded = sql.match(/decode\('([^']+)', 'base64'\)/)[1];
+      if (!row || row.revision !== expected) return { ok: true, status: 200, headers: { get() { return ''; } }, async json() { return []; } };
+      records.set(row.id, { ...row, revision, snapshot: JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) });
+      return { ok: true, status: 200, headers: { get() { return ''; } }, async json() { return [{ id: row.id }]; } };
+    }
+    sqlReadFallbacks += 1;
+    return { ok: true, status: 200, headers: { get() { return ''; } }, async json() { return row ? [clone(row)] : []; } };
+  }
   const method = String(options.method || 'GET').toUpperCase();
   const idFilter = url.searchParams.get('id');
   const inviteFilter = url.searchParams.get('invite_hash');
   const filterValue = (value) => value && value.startsWith('eq.') ? value.slice(3) : value;
   let body = null;
   let status = 200;
+
+  if (method === 'GET' && transientReadFailures > 0) {
+    transientReadFailures -= 1;
+    return { ok: false, status: 500, headers: { get() { return ''; } }, async text() { return 'Something went wrong'; } };
+  }
+  if (method === 'PATCH' && transientWriteFailures > 0) {
+    transientWriteFailures -= 1;
+    return { ok: false, status: 500, headers: { get() { return ''; } }, async text() { return 'Something went wrong'; } };
+  }
 
   if (method === 'GET') {
     const items = [...records.values()].filter((item) => {
@@ -82,7 +126,11 @@ global.fetch = async (input, options = {}) => {
     const id = filterValue(idFilter);
     const existing = records.get(id);
     assert(existing);
-    records.set(id, { ...existing, ...clone(JSON.parse(options.body || '{}')) });
+    const expectedRevision = url.searchParams.get('revision');
+    if (!expectedRevision || existing.revision === Number(filterValue(expectedRevision))) {
+      records.set(id, { ...existing, ...clone(JSON.parse(options.body || '{}')) });
+      body = [clone(records.get(id))];
+    } else body = [];
   } else {
     status = 405;
     body = { message: 'unsupported test method' };
@@ -91,6 +139,7 @@ global.fetch = async (input, options = {}) => {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get() { return ''; } },
     async text() { return body == null ? '' : JSON.stringify(body); }
   };
 };
@@ -98,7 +147,7 @@ global.fetch = async (input, options = {}) => {
 const sourcePath = path.join(__dirname, '..', 'cloudbase', 'functions', 'couple-calendar', 'index.js');
 const source = fs.readFileSync(sourcePath, 'utf8');
 const moduleBox = { exports: {} };
-const localRequire = (name) => (name === '@cloudbase/node-sdk' ? fakeCloudbase : require(name));
+const localRequire = (name) => name === '@cloudbase/node-sdk' ? fakeCloudbase : name === 'web-push' ? fakeWebPush : require(name);
 new Function('exports', 'require', 'module', '__filename', '__dirname', 'console', source)(
   moduleBox.exports,
   localRequire,
@@ -123,10 +172,29 @@ async function run() {
   assert.deepEqual(created.snapshot.moments[0].photos, ['cloud://ok/photo.jpg']);
   assert.equal(created.snapshot.coupleProfile.partnerName, 'B');
 
+  transientReadFailures = 2;
+  const recoveredByRetry = await api({ action: 'pull', session: created.session });
+  assert.equal(recoveredByRetry.ok, true);
+  assert.equal(sqlReadFallbacks, 0);
+  transientReadFailures = 4;
+  const recoveredBySql = await api({ action: 'pull', session: created.session });
+  assert.equal(recoveredBySql.ok, true);
+  assert.equal(sqlReadFallbacks, 1);
+
   const joined = await api({ action: 'join', inviteCode: created.inviteCode });
   assert.equal(joined.ok, true);
   assert.equal(joined.memberRole, 'partner');
   assert.notEqual(joined.session.memberToken, created.session.memberToken);
+
+  const pushConfig = await api({ action: 'pushConfig', session: joined.session });
+  assert.equal(pushConfig.enabled, true);
+  assert.equal(pushConfig.publicKey, process.env.VAPID_PUBLIC_KEY);
+  const partnerPushSubscription = { endpoint: 'https://push.example/partner-device', keys: { p256dh: 'partner-key', auth: 'partner-auth' } };
+  const partnerSubscribed = await api({ action: 'subscribePush', session: joined.session, subscription: partnerPushSubscription });
+  assert.equal(partnerSubscribed.enabled, true);
+  assert.equal(records.get(created.session.spaceId).snapshot.pushSubscriptions.partner.length, 1);
+  const ownerPushSubscription = { endpoint: 'https://push.example/owner-device', keys: { p256dh: 'owner-key', auth: 'owner-auth' } };
+  await api({ action: 'subscribePush', session: created.session, subscription: ownerPushSubscription });
 
   const invalidInvite = await api({ action: 'join', inviteCode: 'LOVE-SIQI' });
   assert.equal(invalidInvite.ok, false);
@@ -147,6 +215,10 @@ async function run() {
     snapshot: { moments: [{ id: 'm2', date: '2026-08-14', note: 'shared' }] }
   });
   assert.equal(pushed.revision, 2);
+  assert.equal(sentPushes.length, 1);
+  assert.equal(sentPushes[0].subscription.endpoint, partnerPushSubscription.endpoint);
+  assert.equal(sentPushes[0].payload.body, 'A 发布了一条新记录');
+  assert.match(sentPushes[0].payload.url, /moment=m2/);
 
   const pulled = await api({ action: 'pull', session: joined.session });
   assert.equal(pulled.ok, true);
@@ -171,6 +243,10 @@ async function run() {
   assert.equal(commentedMoment.comments[0].authorRole, 'partner');
   assert.equal(commentedMoment.comments[0].author, 'B');
   assert.deepEqual(commentedMoment.seenBy, ['owner', 'partner']);
+  assert.equal(sentPushes.length, 2);
+  assert.equal(sentPushes[1].subscription.endpoint, ownerPushSubscription.endpoint);
+  assert.equal(sentPushes[1].payload.body, 'B 评论了你们的记录');
+  assert.equal(Object.prototype.hasOwnProperty.call(partnerCommented.snapshot, 'pushSubscriptions'), false);
 
   // A comment is personal even when it is attached to the other person's
   // post. The post author cannot remove the partner's comment.
@@ -353,6 +429,17 @@ async function run() {
   const rejected = await api({ action: 'pull', session: { spaceId: created.session.spaceId, memberToken: 'wrong' } });
   assert.equal(rejected.ok, false);
   assert.match(rejected.message, /访问权限/);
+
+  transientWriteFailures = 1;
+  const pushedThroughSql = await api({
+    action: 'push',
+    session: secondSpace.session,
+    snapshot: { moments: [{ id: 'fallback-write-test', date: '2026-08-15', note: 'retry-safe' }] }
+  });
+  assert.equal(pushedThroughSql.ok, true);
+  assert.equal(pushedThroughSql.revision, 2);
+  assert.equal(sqlWriteFallbacks, 1);
+  assert(records.get(secondSpace.session.spaceId).snapshot.moments.some((moment) => moment.id === 'fallback-write-test'));
   console.log('cloud function smoke test passed');
 }
 

@@ -28,6 +28,9 @@ const calendarGrid = $('#calendarGrid');
 const dayContent = $('#dayContent');
 const momentDialog = $('#momentDialog');
 let pendingPhotoRetryTimer = 0;
+let syncBusy = false;
+let syncSequence = 0;
+let syncQueue = Promise.resolve();
 let photoViewerMomentId = '';
 let photoViewerIndex = 0;
 let detailMomentId = '';
@@ -70,7 +73,7 @@ function defaultSettings() {
     statuses: { owner: null, partner: null },
     locations: { owner: null, partner: null },
     locationUi: { prompted: false },
-    cloud: { session: null, memberRole: '', inviteCode: '', lastSync: 0, deletedMomentIds: [] }
+    cloud: { session: null, memberRole: '', inviteCode: '', lastSync: 0, deletedMomentIds: [], pendingSync: false }
   };
 }
 function loadSettings() {
@@ -249,7 +252,7 @@ async function uploadPendingPhotos() {
   return firstError;
 }
 function schedulePendingPhotoRetry() {
-  if (pendingPhotoRetryTimer || !hasPendingPhotoUploads()) return;
+  if (pendingPhotoRetryTimer || (!hasPendingPhotoUploads() && !state.settings.cloud.pendingSync)) return;
   pendingPhotoRetryTimer = window.setTimeout(async () => {
     pendingPhotoRetryTimer = 0;
     await pushCloud();
@@ -266,7 +269,14 @@ async function applyCloudSnapshot(snapshot, memberRole = '') {
   state.settings.remote = { ...state.settings.remote, ...remoteForMember(normalizedSnapshot.remote || {}, effectiveRole) };
   if (normalizedSnapshot.cycle && normalizedSnapshot.cycle.shared) state.settings.cycle = { ...state.settings.cycle, ...normalizedSnapshot.cycle };
   state.settings.moods = normalizedSnapshot.moods || state.settings.moods;
-  state.settings.statuses = { ...(state.settings.statuses || {}), ...(normalizedSnapshot.statuses || {}) };
+  const localStatuses = state.settings.statuses || {};
+  const remoteStatuses = normalizedSnapshot.statuses || {};
+  state.settings.statuses = { ...localStatuses, ...remoteStatuses };
+  const ownRole = currentMemberRole();
+  if (localStatuses[ownRole]?.createdAt && String(localStatuses[ownRole].createdAt) > String(remoteStatuses[ownRole]?.createdAt || '')) {
+    state.settings.statuses[ownRole] = localStatuses[ownRole];
+    state.settings.cloud.pendingSync = true;
+  }
   state.settings.locations = { ...(state.settings.locations || {}), ...(normalizedSnapshot.locations || {}) };
   state.settings.cloud.deletedMomentIds = [...new Set([
     ...(Array.isArray(state.settings.cloud.deletedMomentIds) ? state.settings.cloud.deletedMomentIds : []),
@@ -278,22 +288,36 @@ async function applyCloudSnapshot(snapshot, memberRole = '') {
   // A stale/blank cloud snapshot must never erase a device that still has
   // records. Keep the local copy visible so it can be used for recovery.
   const preserveLocalRecovery = !safeIncoming.length && localMoments.some((moment) => !deletedIds.has(moment.id));
+  const localOnly = localMoments.filter((moment) => !deletedIds.has(moment.id) && !safeIncoming.some((remote) => remote.id === moment.id));
   const selectedMoments = preserveLocalRecovery
     ? localMoments.filter((moment) => !deletedIds.has(moment.id))
-    : safeIncoming;
+    : [...safeIncoming, ...localOnly];
+  if (localOnly.length || preserveLocalRecovery) state.settings.cloud.pendingSync = true;
   state.moments = window.HeartbeatCloud ? await window.HeartbeatCloud.resolvePhotos(cloudSession(), selectedMoments) : selectedMoments;
   const readChanged = markMomentsRead((moment) => moment.date === state.selected, false);
   saveSettings(); saveMoments(); renderAll();
   if (preserveLocalRecovery) {
     setSyncStatus('云端为空，已保护本机旧记录');
+    schedulePendingPhotoRetry();
+    return;
+  }
+  if (localOnly.length) {
+    setSyncStatus('本机记录待同步');
+    schedulePendingPhotoRetry();
+    return;
+  }
+  if (state.settings.cloud.pendingSync) {
+    setSyncStatus('本机已保存，待同步');
+    schedulePendingPhotoRetry();
     return;
   }
   if (readChanged) window.setTimeout(() => { void pushCloud(); }, 0);
 }
-async function pushCloud() {
+async function performCloudPush(version) {
   const session = cloudSession();
   if (!session || !window.HeartbeatCloud) return { ok: false, error: new Error('尚未连接情侣空间') };
   try {
+    syncBusy = true;
     setSyncStatus('正在同步…');
     const photoError = await uploadPendingPhotos();
     if (photoError) {
@@ -303,17 +327,39 @@ async function pushCloud() {
       return { ok: false, error: photoError };
     }
     const result = await window.HeartbeatCloud.push(session, sharedSnapshot());
-    state.settings.cloud.lastSync = Date.now(); saveSettings();
-    if (result.snapshot) await applyCloudSnapshot(result.snapshot, result.memberRole);
-    setSyncStatus('已同步给 TA', true);
+    if (version === syncSequence) {
+      state.settings.cloud.pendingSync = false;
+      state.settings.cloud.lastSync = Date.now();
+      saveSettings();
+    }
+    // The server has accepted the snapshot at this point. Refreshing the
+    // local display (especially resolving temporary photo URLs) is helpful,
+    // but must never turn a completed cloud save back into "pending sync".
+    if (result.snapshot && version === syncSequence) {
+      try {
+        await applyCloudSnapshot(result.snapshot, result.memberRole);
+      } catch (refreshError) {
+        console.warn('云端已保存，但本机刷新失败：', refreshError);
+      }
+    }
+    if (version === syncSequence) setSyncStatus('已同步给 TA', true);
     return { ok: true };
-  } catch (error) { console.warn(error); setSyncStatus('本机已保存，待同步'); return { ok: false, error }; }
+  } catch (error) { console.warn(error); setSyncStatus('本机已保存，待同步'); schedulePendingPhotoRetry(); return { ok: false, error }; }
+  finally { syncBusy = false; }
+}
+function pushCloud() {
+  state.settings.cloud.pendingSync = true;
+  saveSettings();
+  const version = ++syncSequence;
+  const task = syncQueue.then(() => performCloudPush(version));
+  syncQueue = task.catch(() => {});
+  return task;
 }
 async function pullCloud() {
   const session = cloudSession();
   if (!session || !window.HeartbeatCloud) return;
-  if (hasPendingPhotoUploads()) {
-    setSyncStatus('照片已本机保存，待上传');
+  if (syncBusy || state.settings.cloud.pendingSync || hasPendingPhotoUploads()) {
+    setSyncStatus(hasPendingPhotoUploads() ? '照片已本机保存，待上传' : '本机已保存，待同步');
     schedulePendingPhotoRetry();
     return;
   }
@@ -321,8 +367,115 @@ async function pullCloud() {
     setSyncStatus('正在获取 TA 的记录…');
     const result = await window.HeartbeatCloud.pull(session);
     if (result.snapshot) await applyCloudSnapshot(result.snapshot, result.memberRole);
-    state.settings.cloud.lastSync = Date.now(); saveSettings(); setSyncStatus('已同步给 TA', true);
-  } catch (error) { console.warn(error); setSyncStatus('本机已保存，待同步'); }
+    state.settings.cloud.lastSync = Date.now(); saveSettings();
+    if (!state.settings.cloud.pendingSync) setSyncStatus('已同步给 TA', true);
+  } catch (error) { console.warn(error); setSyncStatus(state.settings.cloud.pendingSync ? '本机已保存，待同步' : '云端暂时无法读取，稍后重试'); }
+}
+function isAppleMobile() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function isInstalledWebApp() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+function vapidKeyBytes(value) {
+  const padded = String(value || '').replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(String(value || '').length / 4) * 4, '=');
+  const raw = atob(padded);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+function setNotificationStatus(message, tone = '') {
+  const status = $('#notificationStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-on', tone === 'on');
+  status.classList.toggle('is-warning', tone === 'warning');
+}
+async function notificationRegistration() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('当前浏览器不支持后台消息提醒');
+  return navigator.serviceWorker.ready;
+}
+async function renderNotificationDialog() {
+  const enable = $('#notificationEnableButton'); const disable = $('#notificationDisableButton');
+  enable.disabled = false; disable.hidden = true;
+  if (!cloudSession() || !window.HeartbeatCloud) {
+    setNotificationStatus('请先完成情侣空间同步，再为这台设备开启提醒。', 'warning');
+    enable.disabled = true;
+    return;
+  }
+  if (isAppleMobile() && !isInstalledWebApp()) {
+    setNotificationStatus('iPhone 请先在 Safari 点“分享”→“添加到主屏幕”，再从桌面图标打开并开启提醒。', 'warning');
+    return;
+  }
+  try {
+    const registration = await notificationRegistration();
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription && Notification.permission === 'granted') {
+      setNotificationStatus('这台设备已开启：TA 发帖或评论时会收到系统通知。', 'on');
+      enable.textContent = '已开启消息提醒'; enable.disabled = true; disable.hidden = false;
+    } else if (Notification.permission === 'denied') {
+      setNotificationStatus('系统通知权限已被关闭。请到浏览器或系统设置中允许“心动日历”发送通知后重试。', 'warning');
+      enable.textContent = '系统通知未允许';
+    } else {
+      setNotificationStatus('开启后仅提醒 TA 的新帖子与新评论；通知不显示正文、照片或地点。');
+      enable.textContent = '开启消息提醒';
+    }
+  } catch (error) {
+    setNotificationStatus(`这台设备暂不支持后台提醒：${error.message || error}`, 'warning');
+    enable.disabled = true;
+  }
+}
+async function openNotificationDialog() {
+  $('#notificationDialog').showModal();
+  await renderNotificationDialog();
+}
+async function enablePushNotifications() {
+  const session = cloudSession();
+  if (!session || !window.HeartbeatCloud) return;
+  if (isAppleMobile() && !isInstalledWebApp()) {
+    setNotificationStatus('请先把网站添加到 iPhone 主屏幕，并从桌面图标打开后再开启。', 'warning');
+    return;
+  }
+  const button = $('#notificationEnableButton'); button.disabled = true;
+  try {
+    const registration = await notificationRegistration();
+    const config = await window.HeartbeatCloud.pushConfig(session);
+    if (!config.enabled || !config.publicKey) throw new Error('云端提醒尚未配置，请先部署 v49 云函数并填写 VAPID 环境变量');
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (permission !== 'granted') throw new Error('你没有允许系统通知；可以在浏览器或系统设置中稍后开启');
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes(config.publicKey) });
+    await window.HeartbeatCloud.subscribePush(session, subscription.toJSON());
+    setNotificationStatus('已开启。TA 发帖或评论时，这台设备会收到系统通知。', 'on');
+    button.textContent = '已开启消息提醒'; $('#notificationDisableButton').hidden = false;
+  } catch (error) {
+    const detail = window.HeartbeatCloud?.describeError ? window.HeartbeatCloud.describeError(error) : (error?.message || String(error));
+    setNotificationStatus(`开启失败：${detail}`, 'warning');
+    button.disabled = false;
+  }
+}
+async function disablePushNotifications() {
+  const session = cloudSession();
+  const button = $('#notificationDisableButton'); button.disabled = true;
+  try {
+    const registration = await notificationRegistration();
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription && session && window.HeartbeatCloud) await window.HeartbeatCloud.unsubscribePush(session, subscription.endpoint);
+    if (subscription) await subscription.unsubscribe();
+    setNotificationStatus('这台设备的消息提醒已关闭。');
+    $('#notificationEnableButton').textContent = '开启消息提醒'; $('#notificationEnableButton').disabled = false; button.hidden = true;
+  } catch (error) {
+    setNotificationStatus(`关闭失败：${error.message || error}`, 'warning');
+    button.disabled = false;
+  }
+}
+async function openMomentFromNotificationLink() {
+  const momentId = new URLSearchParams(window.location.search).get('moment');
+  if (!momentId) return;
+  const moment = state.moments.find((item) => item.id === momentId);
+  if (!moment) return;
+  state.selected = moment.date;
+  const selected = dateFromIso(moment.date); state.current = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  renderAll(); openMomentDetail(momentId);
+  history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
 }
 function normalizeCity(value) { return String(value || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 function fallbackTimezone() { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; }
@@ -1120,6 +1273,10 @@ function setOnboardingMode(mode, editing = false) {
   $('#onboardingSubmitButton').textContent = joining ? '验证邀请码并加入' : syncingDevice ? '同步并登录这个设备' : '保存我们的开始';
 }
 $('#profileButton').addEventListener('click', () => openOnboarding(true));
+$('#notificationButton').addEventListener('click', () => { void openNotificationDialog(); });
+$('#notificationDialogClose').addEventListener('click', () => $('#notificationDialog').close());
+$('#notificationEnableButton').addEventListener('click', () => { void enablePushNotifications(); });
+$('#notificationDisableButton').addEventListener('click', () => { void disablePushNotifications(); });
 $('#onboardingForm').addEventListener('input', (event) => clearOnboardingFieldError(event.target));
 document.querySelectorAll('.gender-picker button').forEach((button) => button.addEventListener('click', () => selectGender(button.closest('.gender-picker').dataset.genderTarget, button.dataset.gender)));
 document.querySelectorAll('.space-mode button').forEach((button) => button.addEventListener('click', () => {
@@ -1376,8 +1533,9 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
 renderAll();
 if (!profile().complete || !profile().myGender || !profile().partnerGender) openOnboarding();
 else window.setTimeout(maybeOfferLocation, 600);
-if (cloudSession() && window.HeartbeatCloud) window.HeartbeatCloud.initialise().then(pullCloud).catch(() => setSyncStatus('本机已保存，待同步'));
+if (cloudSession() && window.HeartbeatCloud) window.HeartbeatCloud.initialise().then(async () => { await pullCloud(); await openMomentFromNotificationLink(); }).catch(() => setSyncStatus('本机已保存，待同步'));
 else setSyncStatus('等待创建情侣空间');
+window.addEventListener('online', () => { if (state.settings.cloud.pendingSync || hasPendingPhotoUploads()) void pushCloud(); });
 maybeCycleReminder();
 setInterval(renderExtras, 60000);
 setInterval(pullCloud, 25000);
